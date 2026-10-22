@@ -1,5 +1,5 @@
 /* TMW タネ帳: cache the app and the bundled inference code; WebLLM caches model data separately. */
-const VERSION = "tane-2026-10-22-v5";
+const VERSION = "tane-2026-10-22-v6";
 const SCOPE = new URL(self.registration.scope);
 const PREFIX = "tane:" + SCOPE.pathname + ":";
 const SHELL = PREFIX + VERSION + ":shell";

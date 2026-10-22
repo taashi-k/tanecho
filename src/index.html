@@ -87,6 +87,15 @@ details[open] summary{margin-bottom:8px}
 .seed[aria-pressed="true"] .k{background:var(--mark);border-color:var(--mark);color:var(--mark-ink)}
 .seed.ng{opacity:.55}
 .seed .tag{flex:none;font-size:10px;color:var(--warn);border:1px solid var(--warn);border-radius:4px;padding:0 4px}
+.seed .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.seed .past{font-family:var(--f-body);font-size:11px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+.seed .tag.used{color:var(--muted);border-color:var(--muted)}
+.wordchip{font:inherit;font-size:12px;padding:4px 10px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;min-height:36px}
+.wordchip small{color:var(--muted);margin-left:4px}
+.wordchip[aria-pressed="true"]{background:var(--warn);border-color:var(--warn);color:var(--paper)}
+.wordchip[aria-pressed="true"] small{color:var(--paper)}
+.filebtn{display:inline-flex;align-items:center;justify-content:center;font-weight:700;border-radius:var(--r);padding:12px 16px;border:1px solid var(--ink);cursor:pointer;min-height:44px}
+.filebtn input{position:absolute;width:1px;height:1px;opacity:0}
 .live{font-family:var(--f-display);font-size:14px;color:var(--muted);white-space:pre-wrap;min-height:1.5em;border-left:3px solid var(--mark);padding-left:10px}
 .sample{font-size:11px;letter-spacing:.12em;color:var(--muted);border:1px dashed var(--line);border-radius:4px;padding:1px 6px}
 .dock{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--ink);color:var(--bg);
@@ -155,6 +164,23 @@ button{touch-action:manipulation;min-height:44px}
       <div class="field">
         <label class="hint" for="ng">スペースか改行で区切る。AIへの指示に入れたうえで、出てきた候補にも「禁止語」の札を付けます。</label>
         <textarea id="ng">涙 永遠 奇跡</textarea>
+      </div>
+    </details>
+    <details id="pastBox">
+      <summary>過去の歌詞（既出チェック）<span id="pastSummary"></span></summary>
+      <div class="field">
+        <p class="hint">取り込んだ歌詞はこのiPhoneの中だけに保存されます。「# 曲名」の行で曲を区切ります。同じ曲名は新しいほうで上書きします。候補に、過去の歌詞と似た行や同じ言葉があると「既出」の札が付きます。</p>
+        <div class="actions">
+          <label class="filebtn">ファイルから取り込む<input type="file" id="pastFile" accept=".txt,.md,text/plain,text/markdown"></label>
+        </div>
+        <label class="hint" for="pastPaste">または、ここに貼って追加</label>
+        <textarea id="pastPaste" rows="4" placeholder="# 曲名&#10;歌詞の1行目&#10;歌詞の2行目"></textarea>
+        <div class="actions">
+          <button class="btn" type="button" id="pastAdd">貼った歌詞を追加</button>
+          <button class="btn" type="button" id="pastClear">全部消す</button>
+        </div>
+        <span class="hint" id="pastWordsLabel" hidden>よく使っている言葉（2曲以上・タップで禁止ワードに出し入れ）</span>
+        <div class="chips" id="pastWords"></div>
       </div>
     </details>
   </section>
@@ -297,7 +323,7 @@ for (const id of ["core", "voice", "ng"]) {
   if (typeof saved === "string") $("#" + id).value = saved;
   $("#" + id).addEventListener("input", e => {
     store.set(id, e.target.value);
-    if (id === "ng") renderGroups();
+    if (id === "ng") { renderGroups(); renderPastWords(); }
   });
 }
 const ngWords = () => $("#ng").value.split(/[\s、,，]+/).map(s => s.trim()).filter(Boolean);
@@ -353,6 +379,135 @@ function renderSegs() {
 function isPicked(text, core) {
   return state.picks.some(p => p.text === text && p.core === core);
 }
+// ── 過去の歌詞（既出チェック）: kept only in this browser, never sent anywhere.
+// Lines that mix in Latin letters or simplified-Chinese-only characters are model noise, not Japanese lyrics.
+const SIMPLIFIED = /[见这们说话时间东车门长发开关书经过还进对现实认让设请识谁读马鸟鱼风飞买卖页顶头颜题语银钱铁错闪问阳阴际陆隐难响项须顺预领飘饭饮馆驾验骑鲜鸡龙齿亲杂华贝贵质贴边达迟远运连选递逻遗邻钟铃锁闭闲阶陈险随隶虽虾战户扬扫扰挂换损摇击处备复够奖妈宁实宽寻导层岁岛帅师币帐带帮广庆库废异弃张弹强归录彻忆忧怀态总恶悬惊惯愿戏扑执扩]/;
+const foreignLine = line => /[A-Za-z]/.test(line) || SIMPLIFIED.test(line);
+const normLine = t => t.normalize("NFKC").replace(/[\s、。，．,.!！?？…‥「」『』（）()\[\]【】・〜~♪☆★"'“”‘’:：;；\-–—_\/]/g, "");
+const bigrams = s => { const g = new Set(); for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2)); return g; };
+const segmenter = (() => { try { return new Intl.Segmenter("ja", { granularity: "word" }); } catch { return null; } })();
+const STOPWORDS = new Set("ている てる ました ません だから けれど けど から まで より ので のに だけ なんて みたい ような よう こと もの それ これ あれ どこ そこ ここ なに なん する した して いる いた ない なかった ある あった でしょ だろう です ます じゃ じゃない って ねえ ほら もう まだ また ずっと きっと ちょっと みんな ぼくら きみ あなた わたし ぼく おれ あんた かって きみの しゃが いてる くれる ちゃう やけど それで そこで くらい こんな そんな あんな そういう こういう".split(" "));
+function contentWords(text) {
+  if (!segmenter) return [];
+  const out = new Set(); let run = "";
+  const flush = () => { if ([...run].length >= 2) out.add(run); run = ""; };
+  for (const s of segmenter.segment(text.normalize("NFKC"))) {
+    if (!s.isWordLike) { flush(); continue; }
+    const w = s.segment;
+    if (/^[一-鿿々゠-ヿ]+$/.test(w)) run += w; else flush();
+    if (/[一-鿿々゠-ヿ]/.test(w) ? [...w].length >= 2 : /^[ぁ-ゟー]{3,}$/.test(w) && !STOPWORDS.has(w)) out.add(w);
+  }
+  flush();
+  return [...out];
+}
+function loadPastSongs() {
+  const saved = store.get("pastSongs", []);
+  return Array.isArray(saved) ? saved.filter(x => x && typeof x.title === "string" && typeof x.body === "string") : [];
+}
+let pastSongs = loadPastSongs(), pastIndex = null, pastMemo = new Map();
+function parseSongs(text) {
+  const songs = []; let cur = null;
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.trim();
+    if (/^#{1,6}\s*\S/.test(line)) { cur = { title: line.replace(/^#+\s*/, ""), lines: [] }; songs.push(cur); continue; }
+    if (!line || line.startsWith("[") || /^タイトル[\s　]/.test(line) || line.startsWith("```")) continue;
+    if (!cur) { cur = { title: "（曲名なし）", lines: [] }; songs.push(cur); }
+    cur.lines.push(line);
+  }
+  return songs.filter(x => x.lines.length).map(x => ({ title: x.title, body: x.lines.join("\n") }));
+}
+function buildPastIndex() {
+  pastMemo = new Map();
+  if (!pastSongs.length) { pastIndex = null; return; }
+  const lines = [], words = new Map();
+  pastSongs.forEach((song, i) => {
+    for (const text of song.body.split("\n")) {
+      const norm = normLine(text); if ([...norm].length < 2) continue;
+      lines.push({ song: i, text, norm, grams: bigrams(norm) });
+      for (const w of contentWords(text)) { if (!words.has(w)) words.set(w, new Set()); words.get(w).add(i); }
+    }
+  });
+  pastIndex = { lines, words };
+}
+function pastCheck(text) {
+  if (!pastIndex) return null;
+  if (pastMemo.has(text)) return pastMemo.get(text);
+  let result = null;
+  const n = normLine(text);
+  if ([...n].length >= 4) {
+    const g = bigrams(n); let best = null, score = 0;
+    for (const L of pastIndex.lines) {
+      let sc;
+      // A short past line inside a longer candidate ("コーヒー" in "コーヒーをふたつ") is not the same line.
+      if (L.norm.includes(n) || ([...L.norm].length >= Math.max(5, [...n].length * 0.7) && n.includes(L.norm))) sc = 1;
+      else { let inter = 0; for (const x of g) if (L.grams.has(x)) inter++; sc = 2 * inter / (g.size + L.grams.size || 1); }
+      if (sc > score) { score = sc; best = L; }
+    }
+    if (score >= 0.6) result = { line: true, note: `『${pastSongs[best.song].title}』${best.text}` };
+  }
+  if (!result) {
+    // Only words used in 2+ songs count as a habit; a word used once before is not reuse.
+    const used = contentWords(text).filter(w => pastIndex.words.get(w)?.size >= 2).map(w => ({ w, n: pastIndex.words.get(w).size })).sort((a, b) => b.n - a.n);
+    if (used.length) result = { line: false, note: "既出：" + used.slice(0, 3).map(u => `${u.w}（${u.n}曲）`).join("・") };
+  }
+  pastMemo.set(text, result);
+  return result;
+}
+function renderPastWords() {
+  const box = $("#pastWords"); box.replaceChildren();
+  const lineCount = pastIndex ? pastIndex.lines.length : 0;
+  $("#pastSummary").textContent = pastSongs.length ? `：${pastSongs.length}曲・${lineCount}行` : "：未登録";
+  $("#pastClear").disabled = !pastSongs.length;
+  const top = pastIndex ? [...pastIndex.words].map(([w, set]) => ({ w, n: set.size })).filter(x => x.n >= 2).sort((a, b) => b.n - a.n || a.w.localeCompare(b.w, "ja")).slice(0, 40) : [];
+  $("#pastWordsLabel").hidden = !top.length;
+  const ng = ngWords();
+  for (const { w, n } of top) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "wordchip";
+    const on = ng.includes(w);
+    b.setAttribute("aria-pressed", String(on));
+    b.append(w); const small = document.createElement("small"); small.textContent = n + "曲"; b.appendChild(small);
+    b.setAttribute("aria-label", `${w}、${n}曲で使用。${on ? "禁止ワードから外す" : "禁止ワードに入れる"}`);
+    b.onclick = () => {
+      const list = ngWords();
+      const next = list.includes(w) ? list.filter(x => x !== w) : [...list, w];
+      $("#ng").value = next.join(" "); store.set("ng", $("#ng").value);
+      toast(list.includes(w) ? `「${w}」を禁止ワードから外しました` : `「${w}」を禁止ワードに入れました`);
+      renderGroups(); renderPastWords();
+    };
+    box.appendChild(b);
+  }
+}
+function addPastText(text) {
+  const incoming = parseSongs(text);
+  if (!incoming.length) { toast("歌詞が見つかりませんでした"); return; }
+  const byTitle = new Map(pastSongs.map(x => [x.title, x]));
+  for (const song of incoming) byTitle.set(song.title, song);
+  const next = [...byTitle.values()];
+  if (!store.set("pastSongs", next)) return;
+  pastSongs = next; buildPastIndex(); renderPastWords(); renderGroups();
+  toast(`${incoming.length}曲を取り込みました（合計${pastSongs.length}曲）`);
+}
+$("#pastFile").addEventListener("change", async e => {
+  const file = e.target.files?.[0]; if (!file) return;
+  try { addPastText(await file.text()); } catch { toast("ファイルを読み込めませんでした"); }
+  e.target.value = "";
+});
+$("#pastAdd").onclick = () => {
+  const text = $("#pastPaste").value; if (!text.trim()) { toast("先に歌詞を貼ってください"); return; }
+  addPastText(text); $("#pastPaste").value = "";
+};
+let pastClearTimer = null;
+$("#pastClear").onclick = () => {
+  if (pastClearTimer !== null) {
+    clearTimeout(pastClearTimer); pastClearTimer = null; $("#pastClear").textContent = "全部消す";
+    pastSongs = []; store.set("pastSongs", []); buildPastIndex(); renderPastWords(); renderGroups();
+    toast("過去の歌詞を消しました"); return;
+  }
+  $("#pastClear").textContent = "もう一度押すと全部消す";
+  pastClearTimer = setTimeout(() => { pastClearTimer = null; $("#pastClear").textContent = "全部消す"; }, 3000);
+};
+buildPastIndex();
+
 function renderGroups() {
   const box = $("#groups"); box.replaceChildren();
   if (!state.groups.length) {
@@ -389,10 +544,20 @@ function renderGroups() {
       if (hit) b.classList.add("ng");
       const picked = isPicked(text, g.core);
       b.setAttribute("aria-pressed", String(picked));
-      const phrase = document.createElement("span"); phrase.className = "t"; phrase.textContent = text; b.appendChild(phrase);
+      const body = document.createElement("span"); body.className = "body";
+      const phrase = document.createElement("span"); phrase.className = "t"; phrase.textContent = text; body.appendChild(phrase);
+      const past = pastCheck(text);
+      if (past) {
+        const note = document.createElement("small"); note.className = "past"; note.textContent = past.note; body.appendChild(note);
+      }
+      b.appendChild(body);
       if (hit) {
         const tag = document.createElement("span"); tag.className = "tag"; tag.textContent = "禁止語";
         tag.title = hit; b.appendChild(tag);
+      }
+      if (past) {
+        const tag = document.createElement("span"); tag.className = "tag used"; tag.textContent = past.line ? "既出の行" : "既出語";
+        b.appendChild(tag);
       }
       const k = document.createElement("span"); k.className = "k"; k.setAttribute("aria-hidden", "true");
       k.textContent = picked ? "✓" : "＋"; b.appendChild(k);
@@ -643,7 +808,7 @@ function parseLines(text) {
     .replace(/^[\s\-–—・*•●○◯▶︎>＞]+/, "")
     .replace(/^(?:[0-9０-９]+[.\)．）、:：]|[①-⑳]|[（(][0-9０-９]+[)）])\s*/, "")
     .replace(/^[「『"“]+|[」』"”]+$/g, "").trim())
-    .filter(line => line && [...line].length <= 40 && !/^```/.test(line)
+    .filter(line => line && [...line].length <= 40 && !/^```/.test(line) && !foreignLine(line)
       && !/^(?:題材|観点|条件|フレーズ|以下|はい|了解|候補一覧)/.test(line) && !/[：:]$/.test(line));
 }
 function buildPrompt(angle, input, exclude) {
@@ -697,7 +862,7 @@ async function run(ids, original = null) {
       const stream = await awaitEngine(engine.chat.completions.create({
         // Gemma runs near the iPhone memory limit: shorter prompt and output keep it inside a 1024-token context.
         messages: [{ role: "user", content: buildPrompt(angle, small ? { ...input, count: Math.min(input.count, 8) } : input, small ? existing.slice(-5) : existing) }],
-        temperature: input.temp, top_p: 0.95, max_tokens: small ? 320 : Math.min(60 + input.count * 40, 900), stream: true
+        temperature: String(loadedModel).startsWith("Qwen") ? Math.round(input.temp * 75) / 100 : input.temp, top_p: 0.95, max_tokens: small ? 320 : Math.min(60 + input.count * 40, 900), stream: true
       }));
       const iterator = stream[Symbol.asyncIterator]();
       let output = "", finish = null;
@@ -744,7 +909,7 @@ $("#stop").onclick = () => {
   }, 5000);
 };
 if (!$("#core").value) state.groups = SAMPLE.groups.map(g => ({ ...g, items: [...g.items], sample: true, core: SAMPLE.core, voice: "" }));
-renderChips(); renderSegs(); renderGroups(); renderBasket(); syncControls(); checkGPU();
+renderChips(); renderSegs(); renderGroups(); renderPastWords(); renderBasket(); syncControls(); checkGPU();
 
 </script>
 </body>
