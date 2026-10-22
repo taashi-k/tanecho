@@ -616,7 +616,8 @@ $("#load").onclick = async () => {
       $("#prog").style.width = pct + "%"; status(`読み込み中 ${pct}%`, "busy");
       $("#mnote").textContent = progress.text || "モデルを読み込んでいます…";
     } });
-    await awaitEngine(engine.reload(id, { context_window_size: 4096 }));
+    // Gemma 2B is near the iPhone memory limit; a shorter context shrinks its KV cache (prompt + output fit in 1536 tokens).
+    await awaitEngine(engine.reload(id, { context_window_size: id.startsWith("gemma") ? 1536 : 4096 }));
     loadedModel = id; $("#prog").style.width = "100%";
     $("#mnote").textContent = "題材と観点を選んで「タネをまく」を押してください。生成中はこのページを開いたままにしてください。";
     await awaitEngine(checkOfflineModel(id, record));
