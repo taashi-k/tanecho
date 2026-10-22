@@ -530,16 +530,9 @@ async function checkOfflineModel(id, record) {
   try {
     const shell = await caches.match(new URL("index.html", location.href).href);
     const script = (await caches.match(WEBLLM_URL)) && (await caches.match(WORKER_URL));
-    const wasm = await caches.match(record.model_lib);
-    const base = new URL(record.model.endsWith("/") ? record.model : record.model + "/");
-    base.pathname = base.pathname.replace(/\/$/, "/resolve/main/");
-    const configURL = new URL("mlc-chat-config.json", base).href;
-    const configResponse = await caches.match(configURL);
-    const config = configResponse ? await configResponse.clone().json() : null;
-    const tokenizers = Array.isArray(config?.tokenizer_files) ? config.tokenizer_files : [];
-    const tokenizer = await Promise.all(tokenizers.filter(f => ["tokenizer.json", "tokenizer.model"].includes(f)).map(f => caches.match(new URL(f, base).href)));
-    const modelCached = await webllm.hasModelInCache(id);
-    const ready = shell && script && wasm && configResponse && tokenizer.some(Boolean) && modelCached;
+    // Model weights, wasm and config now live in IndexedDB (see appConfig()), not in the Cache API.
+    const modelCached = await webllm.hasModelInCache(id, appConfig());
+    const ready = shell && script && modelCached;
     $("#offlineStatus").textContent = ready
       ? "このモデルのオフライン準備済み。機内モードにして開き直し、生成できるか確認してください。端末が保存データを消した場合は再ダウンロードが必要です。"
       : "AIは使用できますが、オフライン用の保存は未確認です。オンラインのままお使いください。";
@@ -566,6 +559,18 @@ async function checkGPU() {
   } catch (e) { gpu = null; status("AIを起動できません"); $("#mnote").textContent = e.message; }
   syncControls();
 }
+// Safari can read large Cache API entries back as 0 bytes ("exceeds shard size 0").
+// IndexedDB stores the downloaded bytes directly, so the model is kept there instead.
+const appConfig = () => ({ ...webllm.prebuiltAppConfig, cacheBackend: "indexeddb" });
+async function dropOldCacheAPIModels() {
+  // One-time cleanup of model data saved by earlier versions in the Cache API (may be broken and wastes space).
+  if (store.get("cacheBackend", "") === "indexeddb") return;
+  try {
+    for (const key of await caches.keys()) if (key.startsWith("webllm/")) await caches.delete(key);
+    store.set("cacheBackend", "indexeddb");
+  } catch { /* Retry on the next load. */ }
+}
+const brokenCache = e => /shard size|tensor-cache|Failed to store|failed to fetch|Cannot fetch|Unexpected end|JSON/i.test(String(e?.message || e));
 function awaitEngine(promise) { return workerFailure ? Promise.race([promise, workerFailure]) : promise; }
 function releaseWorker() {
   worker?.terminate(); worker = null;
@@ -589,6 +594,8 @@ $("#load").onclick = async () => {
   try {
     await offlinePromise;
     webllm ??= await import(WEBLLM_URL);
+    await dropOldCacheAPIModels();
+    try { await navigator.storage?.persist?.(); } catch { /* Ask the browser to keep the model; optional. */ }
     $("#mnote").textContent = "モデルを読み込んでいます。初回は数分かかることがあります。このページを開いたままお待ちください。";
     const record = webllm.prebuiltAppConfig.model_list.find(m => m.model_id === id);
     if (!record) throw new Error("選んだモデルは、このバージョンで使えません。");
@@ -604,7 +611,7 @@ $("#load").onclick = async () => {
       rejectWorker?.(new Error("AI用の処理を起動できません。Safariでオンラインのまま読み込み直してください。"));
       if (!loading && !busy) { releaseWorker(); status("再読込が必要です"); syncControls(); }
     });
-    engine = new webllm.WebWorkerMLCEngine(worker, { initProgressCallback: progress => {
+    engine = new webllm.WebWorkerMLCEngine(worker, { appConfig: appConfig(), initProgressCallback: progress => {
       const pct = Math.max(0, Math.min(100, Math.round((progress.progress || 0) * 100)));
       $("#prog").style.width = pct + "%"; status(`読み込み中 ${pct}%`, "busy");
       $("#mnote").textContent = progress.text || "モデルを読み込んでいます…";
@@ -617,6 +624,13 @@ $("#load").onclick = async () => {
   } catch (e) {
     releaseWorker(); status("読み込み失敗"); $("#prog").style.width = "0%";
     $("#mnote").textContent = explainError(e);
+    if (webllm && brokenCache(e)) {
+      // A half-saved or empty file would fail the same way every time, so remove this model's saved data.
+      try {
+        await webllm.deleteModelAllInfoInCache(id, appConfig());
+        $("#mnote").textContent = "保存データが壊れていたため、このモデルの保存分を消しました。Wi-Fiにつないで、もう一度「モデルを読み込む」を押してください。";
+      } catch { /* Keep the original message. */ }
+    }
   } finally { loading = false; syncControls(); renderGroups(); }
 };
 
