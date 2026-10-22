@@ -185,6 +185,15 @@ button{touch-action:manipulation;min-height:44px}
     </details>
   </section>
 
+  <section aria-labelledby="l-paste">
+    <div class="label" id="l-paste">貼り付け ─ ほかのAIや自分の候補</div>
+    <div class="field">
+      <label class="hint" for="pasteSeeds">1行に1つ。番号や「・」は自動で外します。上の題材の候補として並び、過去の歌詞と照らして「既出」の札が付きます。AIがなくても使えます。</label>
+      <textarea id="pasteSeeds" rows="5" placeholder="例：&#10;1. 角を曲がったら急に香る&#10;2. 自転車のかごに落ちた橙色"></textarea>
+    </div>
+    <button class="btn" type="button" id="pasteSow">貼った候補をまく</button>
+  </section>
+
   <section aria-labelledby="l-model">
     <div class="label" id="l-model">AI ─ iPhoneの中で動くモデル</div>
     <div class="model">
@@ -272,7 +281,8 @@ const SAMPLE = {
 const WEBLLM_URL = new URL("webllm.js", location.href).href;
 const WORKER_URL = new URL("worker.js", location.href).href;
 const $ = s => document.querySelector(s);
-const angleOf = id => ANGLES.find(a => a.id === id);
+const PASTE_ANGLE = {id:"paste", name:"貼り付け", desc:"貼り付けた候補"};
+const angleOf = id => id === "paste" ? PASTE_ANGLE : ANGLES.find(a => a.id === id);
 const textKey = t => t.normalize("NFKC").trim();
 let webllm = null, engine = null, worker = null;
 let workerFailure = null, rejectWorker = null;
@@ -382,7 +392,7 @@ function isPicked(text, core) {
 // ── 過去の歌詞（既出チェック）: kept only in this browser, never sent anywhere.
 // Lines that mix in Latin letters or simplified-Chinese-only characters are model noise, not Japanese lyrics.
 const SIMPLIFIED = /[见这们说话时间东车门长发开关书经过还进对现实认让设请识谁读马鸟鱼风飞买卖页顶头颜题语银钱铁错闪问阳阴际陆隐难响项须顺预领飘饭饮馆驾验骑鲜鸡龙齿亲杂华贝贵质贴边达迟远运连选递逻遗邻钟铃锁闭闲阶陈险随隶虽虾战户扬扫扰挂换损摇击处备复够奖妈宁实宽寻导层岁岛帅师币帐带帮广庆库废异弃张弹强归录彻忆忧怀态总恶悬惊惯愿戏扑执扩]/;
-const foreignLine = line => /[A-Za-z]/.test(line) || SIMPLIFIED.test(line);
+const foreignLine = line => /[A-Za-z\uFFFD]/.test(line) || SIMPLIFIED.test(line);
 const normLine = t => t.normalize("NFKC").replace(/[\s、。，．,.!！?？…‥「」『』（）()\[\]【】・〜~♪☆★"'“”‘’:：;；\-–—_\/]/g, "");
 const bigrams = s => { const g = new Set(); for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2)); return g; };
 const segmenter = (() => { try { return new Intl.Segmenter("ja", { granularity: "word" }); } catch { return null; } })();
@@ -525,7 +535,7 @@ function renderGroups() {
     title.appendChild(count); head.appendChild(title);
     if (g.sample) {
       const s = document.createElement("span"); s.className = "sample"; s.textContent = "見本"; head.appendChild(s);
-    } else {
+    } else if (g.angle !== "paste") {
       const m = document.createElement("button"); m.type = "button"; m.className = "more"; m.textContent = "もっと";
       m.disabled = busy || loading || !engine; m.onclick = () => run([g.angle], g); head.appendChild(m);
     }
@@ -894,6 +904,37 @@ async function run(ids, original = null) {
   }
 }
 $("#sow").onclick = () => run([...state.angles]);
+// Pasted candidates (from another AI or your own notes): no model needed, English is allowed.
+function parsePasted(text) {
+  return String(text).split(/\r?\n/)
+    .filter(line => !/^\s*(\*\*|__).+\1\s*$/.test(line) && !/[:：]\s*$/.test(line)) // headings such as **候補** or 「情景：」
+    .map(line => line
+    .replace(/\*\*|__/g, "")
+    .replace(/^[\s\-–—・*•●○◯▶︎>＞]+/, "")
+    .replace(/^(?:[0-9０-９]+[.\)．）、:：]|[①-⑳]|[（(][0-9０-９]+[)）])\s*/, "")
+    .replace(/^[「『"“]+|[」』"”]+$/g, "").trim())
+    .filter(line => line && [...line].length <= 80 && !/^```|^#{1,6}\s/.test(line) && !line.includes("\uFFFD"));
+}
+$("#pasteSow").onclick = () => {
+  if (busy) { toast("生成が終わってからまいてください"); return; }
+  const lines = parsePasted($("#pasteSeeds").value);
+  if (!lines.length) { toast("先に候補を貼ってください"); $("#pasteSeeds").focus(); return; }
+  const core = $("#core").value.trim() || "（題材なし）", voice = $("#voice").value.trim();
+  state.groups = state.groups.filter(g => !g.sample);
+  let g = state.groups.find(x => x.angle === "paste" && x.core === core && x.voice === voice);
+  if (!g) { g = { angle: "paste", core, voice, items: [] }; state.groups.unshift(g); }
+  const seen = new Set(state.groups.filter(x => x.core === core && x.voice === voice).flatMap(x => x.items).map(textKey));
+  let added = 0, used = 0;
+  for (const line of lines) {
+    const key = textKey(line); if (seen.has(key)) continue;
+    seen.add(key); g.items.push(line); added++;
+    if (pastCheck(line)) used++;
+  }
+  renderGroups(); syncControls();
+  $("#pasteSeeds").value = "";
+  toast(added ? `${added}個まきました` + (pastIndex ? `（既出の札 ${used}個）` : "") : "新しい候補はありませんでした（重複のみ）");
+  $("#results").scrollIntoView({ behavior: "smooth", block: "start" });
+};
 $("#stop").onclick = () => {
   if (!busy) return;
   if (stopFlag && forceStopReady) {
