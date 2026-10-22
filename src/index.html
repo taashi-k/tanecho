@@ -179,7 +179,7 @@ button{touch-action:manipulation;min-height:44px}
           <button class="btn" type="button" id="pastAdd">貼った歌詞を追加</button>
           <button class="btn" type="button" id="pastClear">全部消す</button>
         </div>
-        <span class="hint" id="pastWordsLabel" hidden>よく使っている言葉（2曲以上・タップで禁止ワードに出し入れ）</span>
+        <span class="hint" id="pastWordsLabel" hidden>よく使っている言葉（タップで禁止ワードに出し入れ）</span>
         <div class="chips" id="pastWords"></div>
       </div>
     </details>
@@ -396,7 +396,7 @@ const foreignLine = line => /[A-Za-z\uFFFD]/.test(line) || SIMPLIFIED.test(line)
 const normLine = t => t.normalize("NFKC").replace(/[\s、。，．,.!！?？…‥「」『』（）()\[\]【】・〜~♪☆★"'“”‘’:：;；\-–—_\/]/g, "");
 const bigrams = s => { const g = new Set(); for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2)); return g; };
 const segmenter = (() => { try { return new Intl.Segmenter("ja", { granularity: "word" }); } catch { return null; } })();
-const STOPWORDS = new Set("ている てる ました ません だから けれど けど から まで より ので のに だけ なんて みたい ような よう こと もの それ これ あれ どこ そこ ここ なに なん する した して いる いた ない なかった ある あった でしょ だろう です ます じゃ じゃない って ねえ ほら もう まだ また ずっと きっと ちょっと みんな ぼくら きみ あなた わたし ぼく おれ あんた かって きみの しゃが いてる くれる ちゃう やけど それで そこで くらい こんな そんな あんな そういう こういう".split(" "));
+const STOPWORDS = new Set("ている てる ました ません だから けれど けど から まで より ので のに だけ なんて みたい ような よう こと もの それ これ あれ どこ そこ ここ なに なん する した して いる いた ない なかった ある あった でしょ だろう です ます じゃ じゃない って ねえ ほら もう まだ また ずっと きっと ちょっと みんな ぼくら きみ あなた わたし ぼく おれ あんた ながら しまう だけど なのに かって きみの しゃが いてる くれる ちゃう やけど それで そこで くらい こんな そんな あんな そういう こういう".split(" "));
 function contentWords(text) {
   if (!segmenter) return [];
   const out = new Set(); let run = "";
@@ -426,6 +426,7 @@ function parseSongs(text) {
   }
   return songs.filter(x => x.lines.length).map(x => ({ title: x.title, body: x.lines.join("\n") }));
 }
+const habitMin = () => Math.max(2, Math.ceil(pastSongs.length * 0.07));
 function buildPastIndex() {
   pastMemo = new Map();
   if (!pastSongs.length) { pastIndex = null; return; }
@@ -456,8 +457,8 @@ function pastCheck(text) {
     if (score >= 0.6) result = { line: true, note: `『${pastSongs[best.song].title}』${best.text}` };
   }
   if (!result) {
-    // Only words used in 2+ songs count as a habit; a word used once before is not reuse.
-    const used = contentWords(text).filter(w => pastIndex.words.get(w)?.size >= 2).map(w => ({ w, n: pastIndex.words.get(w).size })).sort((a, b) => b.n - a.n);
+    // Only habit words count: used in about 7% of your songs or more (2 songs with a small catalog, 10 with 140).
+    const used = contentWords(text).filter(w => pastIndex.words.get(w)?.size >= habitMin()).map(w => ({ w, n: pastIndex.words.get(w).size })).sort((a, b) => b.n - a.n);
     if (used.length) result = { line: false, note: "既出：" + used.slice(0, 3).map(u => `${u.w}（${u.n}曲）`).join("・") };
   }
   pastMemo.set(text, result);
@@ -467,8 +468,9 @@ function renderPastWords() {
   const box = $("#pastWords"); box.replaceChildren();
   const lineCount = pastIndex ? pastIndex.lines.length : 0;
   $("#pastSummary").textContent = pastSongs.length ? `：${pastSongs.length}曲・${lineCount}行` : "：未登録";
+  $("#pastWordsLabel").textContent = `よく使っている言葉（${habitMin()}曲以上で使った言葉に「既出語」の札・タップで禁止ワードに出し入れ）`;
   $("#pastClear").disabled = !pastSongs.length;
-  const top = pastIndex ? [...pastIndex.words].map(([w, set]) => ({ w, n: set.size })).filter(x => x.n >= 2).sort((a, b) => b.n - a.n || a.w.localeCompare(b.w, "ja")).slice(0, 40) : [];
+  const top = pastIndex ? [...pastIndex.words].map(([w, set]) => ({ w, n: set.size })).filter(x => x.n >= habitMin()).sort((a, b) => b.n - a.n || a.w.localeCompare(b.w, "ja")).slice(0, 60) : [];
   $("#pastWordsLabel").hidden = !top.length;
   const ng = ngWords();
   for (const { w, n } of top) {
@@ -906,14 +908,32 @@ async function run(ids, original = null) {
 $("#sow").onclick = () => run([...state.angles]);
 // Pasted candidates (from another AI or your own notes): no model needed, English is allowed.
 function parsePasted(text) {
-  return String(text).split(/\r?\n/)
-    .filter(line => !/^\s*(\*\*|__).+\1\s*$/.test(line) && !/[:：]\s*$/.test(line)) // headings such as **候補** or 「情景：」
-    .map(line => line
-    .replace(/\*\*|__/g, "")
-    .replace(/^[\s\-–—・*•●○◯▶︎>＞]+/, "")
-    .replace(/^(?:[0-9０-９]+[.\)．）、:：]|[①-⑳]|[（(][0-9０-９]+[)）])\s*/, "")
-    .replace(/^[「『"“]+|[」』"”]+$/g, "").trim())
-    .filter(line => line && [...line].length <= 80 && !/^```|^#{1,6}\s/.test(line) && !line.includes("\uFFFD"));
+  const out = [];
+  const rows = String(text).split(/\r?\n/);
+  // When the seeds are bullet points, numbered lines are section titles ("2. 身体と感覚の種").
+  const bulleted = rows.filter(r => /^\s*[•●・*\-–]\s*\S/.test(r)).length >= 3;
+  for (const raw of rows) {
+    if (bulleted && /^\s*[0-9０-９]+[.．)）]\s*\S/.test(raw)) continue;
+    if (/^\s*(\*\*|__).+\1\s*$/.test(raw) || /[:：]\s*$/.test(raw)) continue; // headings such as **候補** or 「情景：」
+    let line = raw.replace(/\*\*|__/g, "").replace(/^[\s\-–—・*•●○◯▶︎>＞]+/, "");
+    // Numbered section titles from AI answers: "1. 季節・作業のサイクル（最も使いやすい軸）"
+    if (/^[0-9０-９]+[.．]\s*\S.*[）)]\s*$/.test(line) && !/[「」]/.test(line)) continue;
+    line = line.replace(/^(?:[0-9０-９]+[.\)．）、:：]|[①-⑳]|[（(][0-9０-９]+[)）])\s*/, "");
+    // Short label before the seeds: "春：…", "稲刈り：…"
+    line = line.replace(/^[^：:「」]{1,8}[：:]\s*(?=\S)/, "");
+    // AI chatter: questions back to you and long explanatory sentences
+    if (/(でしょうか|ましょうか|ますか|しますか)[？?]?\s*$/.test(line)) continue;
+    if ([...line].length > 50 && /(ます|です)。/.test(line)) continue;
+    // Several seeds on one line: "A／B／C" or "A / B"
+    for (let part of line.split(/\s*／\s*|\s+\/\s+/)) {
+      part = part.trim();
+      // Strip quotes only when they wrap the whole seed, so 「そろた」——その声… stays intact.
+      const wrapped = part.match(/^[「『"“](.*)[」』"”]$/);
+      if (wrapped && !/[「」『』]/.test(wrapped[1])) part = wrapped[1].trim();
+      if (part && [...part].length <= 80 && !/^```|^#{1,6}\s/.test(part) && !part.includes("�")) out.push(part);
+    }
+  }
+  return out;
 }
 $("#pasteSow").onclick = () => {
   if (busy) { toast("生成が終わってからまいてください"); return; }
