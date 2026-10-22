@@ -617,7 +617,7 @@ $("#load").onclick = async () => {
       $("#mnote").textContent = progress.text || "モデルを読み込んでいます…";
     } });
     // Gemma 2B is near the iPhone memory limit; a shorter context shrinks its KV cache (prompt + output fit in 1536 tokens).
-    await awaitEngine(engine.reload(id, { context_window_size: id.startsWith("gemma") ? 1536 : 4096 }));
+    await awaitEngine(engine.reload(id, { context_window_size: id.startsWith("gemma") ? 1024 : 4096 }));
     loadedModel = id; $("#prog").style.width = "100%";
     $("#mnote").textContent = "題材と観点を選んで「タネをまく」を押してください。生成中はこのページを開いたままにしてください。";
     await awaitEngine(checkOfflineModel(id, record));
@@ -692,10 +692,12 @@ async function run(ids, original = null) {
       current = g; g.live = ""; renderGroups();
       const existing = state.groups.filter(group => group.core === input.core && group.voice === input.voice).flatMap(group => group.items);
       await awaitEngine(engine.resetChat());
+      const small = String(loadedModel).startsWith("gemma");
       if (stopFlag) break;
       const stream = await awaitEngine(engine.chat.completions.create({
-        messages: [{ role: "user", content: buildPrompt(angle, input, existing) }],
-        temperature: input.temp, top_p: 0.95, max_tokens: Math.min(60 + input.count * 40, 900), stream: true
+        // Gemma runs near the iPhone memory limit: shorter prompt and output keep it inside a 1024-token context.
+        messages: [{ role: "user", content: buildPrompt(angle, small ? { ...input, count: Math.min(input.count, 8) } : input, small ? existing.slice(-5) : existing) }],
+        temperature: input.temp, top_p: 0.95, max_tokens: small ? 320 : Math.min(60 + input.count * 40, 900), stream: true
       }));
       const iterator = stream[Symbol.asyncIterator]();
       let output = "", finish = null;
