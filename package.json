@@ -1,0 +1,12 @@
+{
+  "name": "tanecho",
+  "private": true,
+  "description": "TMW タネ帳 — iPhoneのSafariで動く、作詞のフレーズ出し用ローカルAI",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "@mlc-ai/web-llm": "0.2.86",
+    "esbuild": "0.24.0"
+  }
+}

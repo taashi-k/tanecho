@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>TMW タネ帳</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="タネ帳">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#E9ECE4">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@500;700&display=swap">
+<style>
+/* 畑ノート：上から「畑（入力）→ 種（候補）→ かご（摘んだもの）」と縦に流れる一枚もの */
+:root{
+  --bg:#E9ECE4; --paper:#F7F8F3; --ink:#1E2820; --muted:#5E6A5F; --line:#CBD2C5;
+  --sprout:#3F7A4E; --sprout-ink:#F4F7EF; --mark:#F1C84B; --mark-ink:#2A2410; --warn:#A5452F;
+  --f-display:"Zen Old Mincho","Hiragino Mincho ProN","Yu Mincho",serif;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#151A16; --paper:#1E251F; --ink:#E6EBE2; --muted:#9AA898; --line:#334036;
+  --sprout:#7DBB8B; --sprout-ink:#10180F; --mark:#E8BE3E; --mark-ink:#1C1606; --warn:#E58A70; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#151A16; --paper:#1E251F; --ink:#E6EBE2; --muted:#9AA898; --line:#334036;
+  --sprout:#7DBB8B; --sprout-ink:#10180F; --mark:#E8BE3E; --mark-ink:#1C1606; --warn:#E58A70; color-scheme:dark}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:12px 110px}
+.wrap{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:6px}
+h1{font-family:var(--f-display);font-weight:700;font-size:30px;line-height:1.1;margin:0;letter-spacing:.04em}
+h1 small{display:block;font-family:var(--f-body);font-size:11px;font-weight:500;letter-spacing:.18em;color:var(--muted);margin-bottom:4px}
+.pill{font-size:12px;padding:4px 10px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.ok{background:var(--sprout);border-color:var(--sprout);color:var(--sprout-ink)}
+.pill.busy{border-color:var(--mark);color:var(--ink)}
+section{display:flex;flex-direction:column;gap:12px}
+.label{font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--muted)}
+.field{display:flex;flex-direction:column;gap:6px}
+textarea,input[type=text],select{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);
+  border-radius:var(--r);padding:10px 12px;width:100%}
+textarea{resize:vertical;min-height:72px}
+#core{font-family:var(--f-display);font-size:18px;min-height:84px}
+textarea:focus-visible,input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--sprout);outline-offset:2px}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:inherit;font-size:13px;padding:6px 12px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.seg{display:flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.seg button{flex:1;font:inherit;font-size:13px;padding:8px 4px;background:transparent;border:0;color:var(--ink);cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:420px){.row2{grid-template-columns:1fr}}
+details{border-top:1px solid var(--line);padding-top:10px}
+summary{cursor:pointer;font-size:13px;color:var(--muted)}
+details[open] summary{margin-bottom:8px}
+.model{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:10px}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--sprout);transition:width .3s}
+.btn{font:inherit;font-weight:700;border-radius:var(--r);padding:12px 16px;border:1px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer}
+.btn.main{background:var(--sprout);border-color:var(--sprout);color:var(--sprout-ink);font-size:17px;padding:14px}
+.btn:disabled{opacity:.45;cursor:default}
+.actions{display:flex;gap:10px}
+.actions .main{flex:1}
+#groups{display:flex;flex-direction:column;gap:22px}
+.group{display:flex;flex-direction:column;gap:8px}
+.ghead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding-bottom:4px}
+.ghead h3{margin:0;font-size:14px;font-weight:700}
+.ghead h3 span{font-weight:400;color:var(--muted);font-size:12px;margin-left:6px}
+.more{font:inherit;font-size:12px;background:none;border:0;color:var(--sprout);cursor:pointer;padding:4px 0;font-weight:700}
+.seeds{display:flex;flex-direction:column;gap:6px}
+.seed{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);cursor:pointer;text-align:left;font:inherit;color:var(--ink);width:100%}
+.seed .t{flex:1;min-width:0;font-family:var(--f-display);font-size:17px;line-height:1.45;overflow-wrap:anywhere}
+.seed .k{flex:none;width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line);display:grid;place-items:center;font-size:13px;color:var(--muted)}
+.seed[aria-pressed="true"]{border-color:var(--mark)}
+.seed[aria-pressed="true"] .t{background:linear-gradient(transparent 58%,var(--mark) 58%,var(--mark) 92%,transparent 92%);color:var(--ink)}
+.seed[aria-pressed="true"] .k{background:var(--mark);border-color:var(--mark);color:var(--mark-ink)}
+.seed.ng{opacity:.55}
+.seed .tag{flex:none;font-size:10px;color:var(--warn);border:1px solid var(--warn);border-radius:4px;padding:0 4px}
+.live{font-family:var(--f-display);font-size:14px;color:var(--muted);white-space:pre-wrap;min-height:1.5em;border-left:3px solid var(--mark);padding-left:10px}
+.sample{font-size:11px;letter-spacing:.12em;color:var(--muted);border:1px dashed var(--line);border-radius:4px;padding:1px 6px}
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--ink);color:var(--bg);
+  padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.dock .in{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.dock .count{flex:1;font-size:14px}
+.dock .count b{font-family:var(--f-display);font-size:20px;color:var(--mark);margin-right:4px;font-variant-numeric:tabular-nums}
+.dock button{font:inherit;font-size:13px;font-weight:700;border-radius:8px;padding:8px 12px;border:1px solid var(--bg);background:transparent;color:var(--bg);cursor:pointer}
+.sheet{position:fixed;inset:0;z-index:30;background:color-mix(in srgb,var(--ink) 45%,transparent);display:flex;align-items:flex-end}
+.sheet .panel{background:var(--bg);width:100%;max-height:82%;overflow:auto;border-radius:16px 16px 0 0;
+  padding:18px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.panel .in{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.panel h2{font-family:var(--f-display);margin:0;font-size:22px}
+.basket{display:flex;flex-direction:column;gap:0;margin:0;padding:0;list-style:none}
+.basket li{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.basket li .t{flex:1;min-width:0;font-family:var(--f-display);font-size:17px;overflow-wrap:anywhere}
+.basket li small{display:block;font-family:var(--f-body);font-size:11px;color:var(--muted)}
+.basket li button{font:inherit;font-size:12px;background:none;border:0;color:var(--muted);cursor:pointer;padding:6px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--sprout);color:var(--sprout-ink);font-size:13px;padding:8px 14px;border-radius:99px}
+.note{font-size:12px;color:var(--muted);line-height:1.7}
+.err{color:var(--warn)}
+textarea,input[type=text],select{font-size:16px}
+button{touch-action:manipulation;min-height:44px}
+.chip:disabled,.seg button:disabled,.more:disabled{opacity:.45;cursor:default}
+.ghead{flex-wrap:wrap}
+.ghead .subject{flex-basis:100%;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.seed[aria-pressed="true"] .t{background:none;text-decoration:underline;text-decoration-color:var(--mark);text-underline-offset:.2em;text-decoration-thickness:.14em}
+#mnote,#offlineStatus,#storageNote{margin:0;overflow-wrap:anywhere}
+.sheet .panel{overscroll-behavior:contain}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><small>TADASHI MUSIC WORKS</small>タネ帳</h1>
+    <span class="pill" id="status" role="status" aria-live="polite">環境を確認中</span>
+  </header>
+
+  <section aria-labelledby="l-field">
+    <div class="label" id="l-field">畑 ─ 題材</div>
+    <div class="field">
+      <label class="hint" for="core">核（子どもでも分かる一文で）</label>
+      <textarea id="core" placeholder="例：閉店したあとも光っている自販機"></textarea>
+    </div>
+    <div class="field">
+      <label class="hint" for="voice">語り手・相手（なくてもOK）</label>
+      <input type="text" id="voice" placeholder="例：夜勤明けの人が、自販機に話しかける">
+    </div>
+    <div class="field">
+      <span class="hint">観点（複数えらべる）</span>
+      <div class="chips" id="angles"></div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <span class="hint">1観点あたりの数</span>
+      <div class="seg" id="count" role="group" aria-label="1観点あたりの数"></div>
+      </div>
+      <div class="field">
+        <span class="hint">振れ幅</span>
+      <div class="seg" id="temp" role="group" aria-label="振れ幅"></div>
+      </div>
+    </div>
+    <details>
+      <summary>使い回し禁止ワード</summary>
+      <div class="field">
+        <label class="hint" for="ng">スペースか改行で区切る。AIへの指示に入れたうえで、出てきた候補にも「禁止語」の札を付けます。</label>
+        <textarea id="ng">涙 永遠 奇跡</textarea>
+      </div>
+    </details>
+  </section>
+
+  <section aria-labelledby="l-model">
+    <div class="label" id="l-model">AI ─ iPhoneの中で動くモデル</div>
+    <div class="model">
+      <select id="model" aria-label="モデル" disabled></select>
+      <div class="bar" aria-hidden="true"><i id="prog"></i></div>
+      <p class="note" id="mnote">最初はモデルのダウンロードが必要です（Wi-Fi推奨）。空き容量とメモリに余裕のある状態で開いてください。</p>
+      <p class="note" id="offlineStatus" role="status">オフライン用の保存を確認中…</p>
+      <p class="note err" id="storageNote" role="status" hidden></p>
+      <p class="note" id="homeNote" hidden>Safariで開いています。モデルはホーム画面のアプリとは別に保存されるため、先に共有メニューの「ホーム画面に追加」をして、ホーム画面のアプリから読み込んでください。</p>
+      <button class="btn" id="load" disabled>モデルを読み込む</button>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button class="btn main" id="sow" disabled>タネをまく</button>
+    <button class="btn" id="stop" hidden>止める</button>
+  </div>
+
+  <section aria-labelledby="l-seeds" id="results">
+    <div class="label" id="l-seeds">種 ─ タップで摘む</div>
+    <div id="groups"></div>
+  </section>
+</div>
+
+<div class="dock">
+  <div class="in">
+    <div class="count"><b id="pickN">0</b>摘んだタネ</div>
+    <button id="openBasket">かごを見る</button>
+  </div>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="bh">
+    <div class="in">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <h2 id="bh">かご</h2>
+        <button class="btn" id="closeBasket" style="padding:6px 12px">閉じる</button>
+      </div>
+      <ul class="basket" id="basket"></ul>
+      <div class="actions">
+        <button class="btn main" id="copyAll">まとめてコピー</button>
+        <button class="btn" id="clearAll">空にする</button>
+      </div>
+      <div class="field" id="manualCopy" hidden>
+        <label class="hint" for="copyText">自動コピーが使えません。下の文章を長押しし、選択してコピーしてください。</label>
+        <textarea id="copyText" readonly rows="6" aria-label="手動コピー用のフレーズ"></textarea>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<noscript><p>このアプリにはJavaScriptが必要です。SafariでWebページとして開いてください。</p></noscript>
+
+<script type="module">
+const ANGLES = [
+  {id:"scene",  name:"情景",       desc:"見えるもの"},
+  {id:"act",    name:"行動",       desc:"体の動き"},
+  {id:"prop",   name:"小道具",     desc:"その場の物"},
+  {id:"sound",  name:"音・オノマトペ", desc:"聞こえる音"},
+  {id:"talk",   name:"話しかけ",   desc:"聴き手への一言"},
+  {id:"meta",   name:"比喩",       desc:"見立て"},
+  {id:"half",   name:"言いさし",   desc:"途中で止めた言葉"},
+  {id:"flip",   name:"裏腹",       desc:"本心と逆の一言"},
+  {id:"time",   name:"時刻・季節", desc:"時刻や季節"},
+  {id:"kansai", name:"関西弁",     desc:"関西弁の一言"},
+];
+const COUNTS = [5,10,15];
+const TEMPS = [{n:"おとなしい",v:0.7},{n:"ふつう",v:1.0},{n:"暴れる",v:1.3}];
+const MODELS = [
+  {base:"gemma-2-2b-jpn-it", name:"Gemma 2B 日本語版（おすすめ）"},
+  {base:"Qwen2.5-1.5B-Instruct", name:"Qwen 1.5B（少し軽い）"},
+  {base:"Qwen2.5-0.5B-Instruct", name:"Qwen 0.5B（最軽量・質は低め）"},
+];
+const SAMPLE = {
+  core:"閉店したあとも光っている自販機",
+  groups:[
+    {angle:"scene", items:["シャッターの前で白く光る四角","百円玉ひとつぶんの明るさ","ガラスに映る青い『つめた〜い』"]},
+    {angle:"act", items:["小銭を数えなおす指","ボタンを押さずに手を下ろす","缶を頬に当てたまま歩く"]},
+  ]
+};
+
+// The model and all inference stay in this browser. No API keys or server inference.
+// WebLLM is bundled at deploy time and served from this same folder (no CDN at run time).
+const WEBLLM_URL = new URL("webllm.js", location.href).href;
+const WORKER_URL = new URL("worker.js", location.href).href;
+const $ = s => document.querySelector(s);
+const angleOf = id => ANGLES.find(a => a.id === id);
+const textKey = t => t.normalize("NFKC").trim();
+let webllm = null, engine = null, worker = null;
+let workerFailure = null, rejectWorker = null;
+let busy = false, loading = false, stopFlag = false, gpu = null;
+let loadedModel = null, cacheFailed = false, lastFocus = null, clearTimer = null;
+let stopTimer = null, forceStopReady = false;
+
+function storageWarning(message) {
+  $("#storageNote").textContent = message;
+  $("#storageNote").hidden = false;
+}
+const store = {
+  get(k, fallback) {
+    try {
+      const value = localStorage.getItem("tane:" + k);
+      return value === null ? fallback : JSON.parse(value);
+    } catch {
+      storageWarning("保存データを読み込めませんでした。かごの内容は、ページを閉じる前にコピーしてください。");
+      return fallback;
+    }
+  },
+  set(k, value) {
+    try { localStorage.setItem("tane:" + k, JSON.stringify(value)); return true; }
+    catch {
+      storageWarning("端末へ保存できませんでした。かごの内容は、ページを閉じる前にコピーしてください。");
+      return false;
+    }
+  }
+};
+const savedAngles = store.get("angles", ["scene", "act", "prop", "talk"]);
+const savedPicks = store.get("picks", []);
+const savedCount = store.get("count", 10), savedTemp = store.get("temp", 1);
+const state = {
+  angles: Array.isArray(savedAngles) ? [...new Set(savedAngles.filter(id => angleOf(id)))] : ["scene", "act", "prop", "talk"],
+  count: COUNTS.includes(savedCount) ? savedCount : 10,
+  temp: TEMPS.some(t => t.v === savedTemp) ? savedTemp : 1,
+  picks: Array.isArray(savedPicks) ? savedPicks.filter(p => p && typeof p.text === "string" && p.text.trim()).map(p => ({
+    text: p.text, angle: typeof p.angle === "string" ? p.angle : "",
+    core: typeof p.core === "string" ? p.core : "", at: Number.isFinite(p.at) ? p.at : 0
+  })) : [],
+  groups: []
+};
+if (!Array.isArray(savedPicks) || state.picks.length !== savedPicks.length) {
+  storageWarning("保存データの一部を読み込めませんでした。読み込めたかごの内容は、まとめてコピーできます。");
+}
+for (const id of ["core", "voice", "ng"]) {
+  const saved = store.get(id, $("#" + id).value);
+  if (typeof saved === "string") $("#" + id).value = saved;
+  $("#" + id).addEventListener("input", e => {
+    store.set(id, e.target.value);
+    if (id === "ng") renderGroups();
+  });
+}
+const ngWords = () => $("#ng").value.split(/[\s、,，]+/).map(s => s.trim()).filter(Boolean);
+const status = (text, cls = "") => {
+  $("#status").textContent = text;
+  $("#status").className = "pill " + cls;
+};
+function toast(message) {
+  const t = $("#toast"); t.textContent = message; t.hidden = false;
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.hidden = true; }, 2500);
+}
+function syncControls() {
+  const locked = busy || loading;
+  $("#load").disabled = locked || !gpu;
+  $("#model").disabled = locked || !gpu;
+  $("#sow").disabled = locked || !engine;
+  $("#stop").hidden = !busy;
+  $("#stop").disabled = stopFlag && !forceStopReady;
+  $("#stop").textContent = forceStopReady ? "強制停止" : stopFlag ? "停止中…" : "止める";
+  $("#load").textContent = loading ? "読み込み中…" : engine ? "別のモデルに切り替える" : "モデルを読み込む";
+  for (const el of document.querySelectorAll("#core,#voice,#ng,#angles button,#count button,#temp button,#groups .more")) {
+    el.disabled = locked || (el.classList.contains("more") && !engine);
+  }
+  $("#results").setAttribute("aria-busy", String(busy));
+}
+function renderChips() {
+  const box = $("#angles"); box.replaceChildren();
+  for (const a of ANGLES) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "chip";
+    b.textContent = a.name; b.title = a.desc;
+    b.setAttribute("aria-pressed", String(state.angles.includes(a.id)));
+    b.onclick = () => {
+      if (busy || loading) return;
+      state.angles = state.angles.includes(a.id) ? state.angles.filter(id => id !== a.id) : [...state.angles, a.id];
+      store.set("angles", state.angles); renderChips(); syncControls();
+    };
+    box.appendChild(b);
+  }
+}
+function renderSeg(selector, items, selected, label, pick) {
+  const box = $(selector); box.replaceChildren();
+  for (const item of items) {
+    const b = document.createElement("button"); b.type = "button";
+    b.textContent = label(item); b.setAttribute("aria-pressed", String(selected(item)));
+    b.onclick = () => { if (!busy && !loading) { pick(item); renderSegs(); syncControls(); } };
+    box.appendChild(b);
+  }
+}
+function renderSegs() {
+  renderSeg("#count", COUNTS, c => c === state.count, c => c + "個", c => { state.count = c; store.set("count", c); });
+  renderSeg("#temp", TEMPS, t => t.v === state.temp, t => t.n, t => { state.temp = t.v; store.set("temp", t.v); });
+}
+function isPicked(text, core) {
+  return state.picks.some(p => p.text === text && p.core === core);
+}
+function renderGroups() {
+  const box = $("#groups"); box.replaceChildren();
+  if (!state.groups.length) {
+    const note = document.createElement("p"); note.className = "note";
+    note.textContent = "題材を書いて「タネをまく」を押すと、ここに候補が並びます。";
+    box.appendChild(note); return;
+  }
+  const ng = ngWords();
+  for (const g of state.groups) {
+    const a = angleOf(g.angle); if (!a) continue;
+    const wrap = document.createElement("div"); wrap.className = "group";
+    const head = document.createElement("div"); head.className = "ghead";
+    const title = document.createElement("h3"); title.textContent = a.name;
+    const count = document.createElement("span"); count.textContent = g.items.length + "個";
+    title.appendChild(count); head.appendChild(title);
+    if (g.sample) {
+      const s = document.createElement("span"); s.className = "sample"; s.textContent = "見本"; head.appendChild(s);
+    } else {
+      const m = document.createElement("button"); m.type = "button"; m.className = "more"; m.textContent = "もっと";
+      m.disabled = busy || loading || !engine; m.onclick = () => run([g.angle], g); head.appendChild(m);
+    }
+    const subject = document.createElement("div"); subject.className = "subject";
+    subject.textContent = g.core + (g.voice ? "｜" + g.voice : ""); head.appendChild(subject);
+    wrap.appendChild(head);
+    if (g.live !== undefined) {
+      const live = document.createElement("div"); live.className = "live";
+      live.textContent = stripThoughts(g.live).trim() || "考え中…"; wrap.appendChild(live);
+      g.liveElement = live;
+    }
+    const list = document.createElement("div"); list.className = "seeds";
+    for (const text of g.items) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "seed";
+      const hit = ng.find(w => textKey(text).includes(textKey(w)));
+      if (hit) b.classList.add("ng");
+      const picked = isPicked(text, g.core);
+      b.setAttribute("aria-pressed", String(picked));
+      const phrase = document.createElement("span"); phrase.className = "t"; phrase.textContent = text; b.appendChild(phrase);
+      if (hit) {
+        const tag = document.createElement("span"); tag.className = "tag"; tag.textContent = "禁止語";
+        tag.title = hit; b.appendChild(tag);
+      }
+      const k = document.createElement("span"); k.className = "k"; k.setAttribute("aria-hidden", "true");
+      k.textContent = picked ? "✓" : "＋"; b.appendChild(k);
+      b.onclick = () => togglePick(text, g.angle, g.core); list.appendChild(b);
+    }
+    wrap.appendChild(list); box.appendChild(wrap);
+  }
+}
+function togglePick(text, angle, core) {
+  if (isPicked(text, core)) state.picks = state.picks.filter(p => !(p.text === text && p.core === core));
+  else state.picks.push({ text, angle, core, at: Date.now() });
+  store.set("picks", state.picks); renderGroups(); renderBasket();
+}
+function basketText() {
+  const byCore = new Map();
+  for (const p of state.picks) {
+    const key = p.core || "（題材なし）";
+    if (!byCore.has(key)) byCore.set(key, []);
+    byCore.get(key).push(p.text);
+  }
+  return [...byCore].map(([core, lines]) => `【${core}】\n${lines.join("\n")}`).join("\n\n");
+}
+function renderBasket() {
+  $("#pickN").textContent = state.picks.length;
+  $("#copyAll").disabled = $("#clearAll").disabled = !state.picks.length;
+  $("#copyText").value = basketText();
+  const ul = $("#basket"); ul.replaceChildren();
+  if (!state.picks.length) {
+    const li = document.createElement("li"); li.className = "note";
+    li.textContent = "まだ空です。気になったタネをタップしてください。"; ul.appendChild(li); return;
+  }
+  state.picks.forEach((p, i) => {
+    const li = document.createElement("li"), text = document.createElement("span"), small = document.createElement("small");
+    text.className = "t"; text.textContent = p.text;
+    small.textContent = (angleOf(p.angle)?.name || "") + (p.core ? "｜" + p.core : ""); text.appendChild(small);
+    const b = document.createElement("button"); b.type = "button"; b.textContent = "外す";
+    b.setAttribute("aria-label", p.text + "をかごから外す");
+    b.onclick = () => {
+      state.picks.splice(i, 1); store.set("picks", state.picks); resetClear(); renderBasket(); renderGroups();
+      ($( "#basket button") || $("#closeBasket")).focus();
+    };
+    li.append(text, b); ul.appendChild(li);
+  });
+}
+function resetClear() {
+  clearTimeout(clearTimer); clearTimer = null; $("#clearAll").textContent = "空にする";
+}
+function closeBasket() {
+  $("#sheet").hidden = true; $(".wrap").inert = false; $(".dock").inert = false;
+  document.body.style.overflow = ""; resetClear(); lastFocus?.focus();
+}
+$("#openBasket").onclick = () => {
+  lastFocus = document.activeElement; renderBasket(); $("#manualCopy").hidden = true;
+  $("#sheet").hidden = false; $(".wrap").inert = true; $(".dock").inert = true;
+  document.body.style.overflow = "hidden"; $("#closeBasket").focus();
+};
+$("#closeBasket").onclick = closeBasket;
+$("#sheet").addEventListener("click", e => { if (e.target === $("#sheet")) closeBasket(); });
+$("#sheet").addEventListener("keydown", e => {
+  if (e.key === "Escape") { e.preventDefault(); closeBasket(); }
+  if (e.key !== "Tab") return;
+  const els = [...$("#sheet").querySelectorAll("button:not(:disabled),textarea")].filter(el => !el.closest("[hidden]"));
+  const first = els[0], last = els.at(-1);
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+  if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+});
+$("#copyAll").onclick = async () => {
+  const text = basketText(); if (!text) return;
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+    await navigator.clipboard.writeText(text); toast("コピーしました"); return;
+  } catch { /* Try a visible text selection, then leave it available for manual copying. */ }
+  const ta = $("#copyText"); ta.value = text; $("#manualCopy").hidden = false;
+  ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+  try {
+    if (document.execCommand("copy")) { $("#manualCopy").hidden = true; $("#copyAll").focus(); toast("コピーしました"); return; }
+  } catch { /* The manual selection remains visible. */ }
+  toast("下の文章を長押ししてコピーしてください");
+};
+$("#clearAll").onclick = () => {
+  if (!state.picks.length) return;
+  if (clearTimer !== null) {
+    resetClear(); state.picks = []; store.set("picks", []); renderBasket(); renderGroups();
+    $("#manualCopy").hidden = true; $("#closeBasket").focus(); return;
+  }
+  $("#clearAll").textContent = "もう一度押すと空に";
+  clearTimer = setTimeout(resetClear, 3000);
+};
+
+// A controlled page is necessary before importing the CDN module, so its code is cached.
+function withTimeout(promise, ms, message) {
+  let timer;
+  return Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); })])
+    .finally(() => clearTimeout(timer));
+}
+async function prepareOffline() {
+  if (!isSecureContext || !["https:", "http:"].includes(location.protocol) || !("serviceWorker" in navigator)) {
+    $("#offlineStatus").textContent = "オフライン用の保存には、HTTPSのWebページとしてSafariで開いてください。";
+    return false;
+  }
+  const expected = new URL("sw.js", location.href).href;
+  try {
+    await navigator.serviceWorker.register(expected, { scope: "./" });
+    await withTimeout(navigator.serviceWorker.ready, 15000, "オフライン保存の起動を待っています");
+    if (navigator.serviceWorker.controller?.scriptURL !== expected) {
+      await withTimeout(new Promise(resolve => {
+        const changed = () => {
+          if (navigator.serviceWorker.controller?.scriptURL === expected) {
+            navigator.serviceWorker.removeEventListener("controllerchange", changed); resolve();
+          }
+        };
+        navigator.serviceWorker.addEventListener("controllerchange", changed); changed();
+      }), 10000, "ページを再読み込みしてください");
+    }
+    $("#offlineStatus").textContent = "アプリの保存済み。モデルを読み込むと、オフライン用の確認を続けます。";
+    return true;
+  } catch {
+    $("#offlineStatus").textContent = "オフライン保存を準備できません。オンラインで開き直してください。";
+    return navigator.serviceWorker.controller?.scriptURL === expected;
+  }
+}
+const offlinePromise = prepareOffline();
+// iPhone: Safari tabs and the home-screen app keep separate storage, so models are loaded in the home-screen app only.
+if (/iPhone|iPad/.test(navigator.userAgent) && !navigator.standalone && !matchMedia("(display-mode: standalone)").matches) {
+  $("#homeNote").hidden = false;
+}
+if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", e => {
+  if (e.data?.type === "TANE_CACHE_WARNING") {
+    cacheFailed = true;
+    $("#offlineStatus").textContent = "オフライン用の保存に失敗しました。端末の空き容量を確認し、オンラインで開き直してください。";
+  }
+});
+async function checkOfflineModel(id, record) {
+  if (!await offlinePromise || cacheFailed) return;
+  try {
+    const shell = await caches.match(new URL("index.html", location.href).href);
+    const script = (await caches.match(WEBLLM_URL)) && (await caches.match(WORKER_URL));
+    const wasm = await caches.match(record.model_lib);
+    const base = new URL(record.model.endsWith("/") ? record.model : record.model + "/");
+    base.pathname = base.pathname.replace(/\/$/, "/resolve/main/");
+    const configURL = new URL("mlc-chat-config.json", base).href;
+    const configResponse = await caches.match(configURL);
+    const config = configResponse ? await configResponse.clone().json() : null;
+    const tokenizers = Array.isArray(config?.tokenizer_files) ? config.tokenizer_files : [];
+    const tokenizer = await Promise.all(tokenizers.filter(f => ["tokenizer.json", "tokenizer.model"].includes(f)).map(f => caches.match(new URL(f, base).href)));
+    const modelCached = await webllm.hasModelInCache(id);
+    const ready = shell && script && wasm && configResponse && tokenizer.some(Boolean) && modelCached;
+    $("#offlineStatus").textContent = ready
+      ? "このモデルのオフライン準備済み。機内モードにして開き直し、生成できるか確認してください。端末が保存データを消した場合は再ダウンロードが必要です。"
+      : "AIは使用できますが、オフライン用の保存は未確認です。オンラインのままお使いください。";
+  } catch {
+    $("#offlineStatus").textContent = "AIは使用できますが、オフライン用の保存を確認できませんでした。";
+  }
+}
+async function checkGPU() {
+  try {
+    if (!isSecureContext || location.protocol === "file:") throw new Error("iPhoneではHTTPSのWebページとしてSafariで開いてください。ファイルのプレビューではAIを起動できません。");
+    if (!navigator.gpu) throw new Error("このブラウザではWebGPUを使えません。WebGPU対応のSafariで開いてください。");
+    gpu = await navigator.gpu.requestAdapter();
+    if (!gpu) throw new Error("GPUを利用できません。ほかのアプリやタブを閉じ、Safariで開き直してください。");
+    const sel = $("#model"); sel.replaceChildren();
+    for (const m of MODELS) {
+      const option = document.createElement("option");
+      option.value = `${m.base}-${gpu.features.has("shader-f16") ? "q4f16_1" : "q4f32_1"}-MLC`;
+      option.textContent = m.name; sel.appendChild(option);
+    }
+    const saved = store.get("model", null);
+    if ([...sel.options].some(o => o.value === saved)) sel.value = saved;
+    sel.onchange = () => store.set("model", sel.value);
+    status("モデル未読込");
+  } catch (e) { gpu = null; status("AIを起動できません"); $("#mnote").textContent = e.message; }
+  syncControls();
+}
+function awaitEngine(promise) { return workerFailure ? Promise.race([promise, workerFailure]) : promise; }
+function releaseWorker() {
+  worker?.terminate(); worker = null;
+  engine = null; loadedModel = null; workerFailure = null; rejectWorker = null;
+}
+function explainError(error) {
+  const text = String(error?.message || error).replace(/https?:\/\/\S+/g, "").slice(0, 300);
+  if (/context|token.*limit|prompt.*long/i.test(text)) return "入力が長すぎる可能性があります。題材や禁止ワードを短くして、もう一度試してください。";
+  if (/memory|buffer|allocation|device.*lost|out of/i.test(text)) return "メモリやGPUを確保できませんでした。ほかのアプリを閉じるか、軽いモデルを選んでください。";
+  if (/fetch|network|load.*module|offline/i.test(text) || !navigator.onLine) return "必要なデータを読み込めませんでした。通信と空き容量を確認し、オンラインで試してください。";
+  return "処理に失敗しました。" + text;
+}
+$("#load").onclick = async () => {
+  if (loading || busy || !gpu) return;
+  const id = $("#model").value; if (!id) return;
+  loading = true; syncControls(); status("読み込み中", "busy");
+  $("#mnote").textContent = "AI用のプログラムを読み込んでいます。初回は通信状況によって時間がかかります。";
+  $("#prog").style.width = "0%"; store.set("model", id);
+  // Termination also releases an old or partially loaded model without a second concurrent load.
+  releaseWorker();
+  try {
+    await offlinePromise;
+    webllm ??= await import(WEBLLM_URL);
+    $("#mnote").textContent = "モデルを読み込んでいます。初回は数分かかることがあります。このページを開いたままお待ちください。";
+    const record = webllm.prebuiltAppConfig.model_list.find(m => m.model_id === id);
+    if (!record) throw new Error("選んだモデルは、このバージョンで使えません。");
+    if ((record.required_features || []).some(feature => !gpu.features.has(feature))) throw new Error("選んだモデルに必要なGPU機能がありません。軽いモデルを選んでください。");
+    if (record.buffer_size_required_bytes && record.buffer_size_required_bytes > gpu.limits.maxStorageBufferBindingSize) throw new Error("モデルに必要なGPUバッファを確保できません。");
+    // worker.js is a self-contained bundle (no imports), so it loads from the saved app files offline.
+    worker = new Worker(WORKER_URL, { type: "module", name: "tane-local-ai" });
+    workerFailure = new Promise((_, reject) => { rejectWorker = reject; });
+    workerFailure.catch(() => {});
+    const activeWorker = worker;
+    worker.addEventListener("error", () => {
+      if (worker !== activeWorker) return;
+      rejectWorker?.(new Error("AI用の処理を起動できません。Safariでオンラインのまま読み込み直してください。"));
+      if (!loading && !busy) { releaseWorker(); status("再読込が必要です"); syncControls(); }
+    });
+    engine = new webllm.WebWorkerMLCEngine(worker, { initProgressCallback: progress => {
+      const pct = Math.max(0, Math.min(100, Math.round((progress.progress || 0) * 100)));
+      $("#prog").style.width = pct + "%"; status(`読み込み中 ${pct}%`, "busy");
+      $("#mnote").textContent = progress.text || "モデルを読み込んでいます…";
+    } });
+    await awaitEngine(engine.reload(id, { context_window_size: 4096 }));
+    loadedModel = id; $("#prog").style.width = "100%";
+    $("#mnote").textContent = "題材と観点を選んで「タネをまく」を押してください。生成中はこのページを開いたままにしてください。";
+    await awaitEngine(checkOfflineModel(id, record));
+    status("準備OK", "ok");
+  } catch (e) {
+    releaseWorker(); status("読み込み失敗"); $("#prog").style.width = "0%";
+    $("#mnote").textContent = explainError(e);
+  } finally { loading = false; syncControls(); renderGroups(); }
+};
+
+function stripThoughts(text) {
+  return text.replace(/<think\b[^>]*>[\s\S]*?(?:<\/think\s*>|$)/gi, "").replace(/<\/?think\b[^>]*>/gi, "");
+}
+function parseLines(text) {
+  return stripThoughts(text).split(/\r?\n/).map(line => line
+    .replace(/^[\s\-–—・*•●○◯▶︎>＞]+/, "")
+    .replace(/^(?:[0-9０-９]+[.\)．）、:：]|[①-⑳]|[（(][0-9０-９]+[)）])\s*/, "")
+    .replace(/^[「『"“]+|[」』"”]+$/g, "").trim())
+    .filter(line => line && [...line].length <= 40 && !/^```/.test(line)
+      && !/^(?:題材|観点|条件|フレーズ|以下|はい|了解|候補一覧)/.test(line) && !/[：:]$/.test(line));
+}
+function buildPrompt(angle, input, exclude) {
+  return [
+    "あなたは作詞家のためのアイデア出し係です。", `題材：${input.core}`,
+    input.voice ? `語り手・相手：${input.voice}` : "", `観点：${angle.name}（${angle.desc}）`,
+    `この観点で、歌詞に使えそうな短いフレーズを${input.count}個出してください。`, "条件：",
+    "・1行に1つ。番号・記号・説明は付けない。", "・どれも5〜20文字くらい。",
+    "・気持ちを説明する言葉より、目に見えるものや動きを優先する。",
+    "・ありきたりな言い回しを避け、この題材でしか出てこない言葉を選ぶ。",
+    input.ng.length ? `・次の言葉は使わない：${input.ng.join("、")}` : "",
+    exclude.length ? `・次のフレーズとは違うものにする：${exclude.slice(-20).join(" / ")}` : "",
+    `フレーズだけを${input.count}行で出力してください。`
+  ].filter(Boolean).join("\n");
+}
+function keepPhrases(group, text, count, completeOnly) {
+  const clean = stripThoughts(text);
+  const complete = completeOnly ? clean.slice(0, clean.lastIndexOf("\n") + 1) : clean;
+  const seen = new Set(state.groups.filter(g => g.core === group.core && g.voice === group.voice).flatMap(g => g.items).map(textKey));
+  let added = 0;
+  for (const phrase of parseLines(complete)) {
+    if (added >= count) break;
+    const key = textKey(phrase); if (seen.has(key)) continue;
+    seen.add(key); group.items.push(phrase); added++;
+  }
+  return added;
+}
+async function run(ids, original = null) {
+  if (!engine || loading || busy) return;
+  const input = {
+    core: original ? original.core : $("#core").value.trim(),
+    voice: original ? original.voice || "" : $("#voice").value.trim(),
+    ng: ngWords(), count: state.count, temp: state.temp
+  };
+  if (!input.core) { toast("先に題材を書いてください"); $("#core").focus(); return; }
+  const angles = [...new Set(ids)].map(angleOf).filter(Boolean);
+  if (!angles.length) { toast("観点をひとつ以上えらんでください"); return; }
+  busy = true; stopFlag = false; forceStopReady = false; syncControls(); status("生成中", "busy");
+  state.groups = state.groups.filter(g => !g.sample);
+  let added = 0, failed = false, forced = false, current = null;
+  try {
+    for (const angle of angles) {
+      if (stopFlag) break;
+      let g = original || state.groups.find(g => g.angle === angle.id && g.core === input.core && g.voice === input.voice);
+      if (!g) { g = { angle: angle.id, core: input.core, voice: input.voice, items: [] }; state.groups.unshift(g); }
+      current = g; g.live = ""; renderGroups();
+      const existing = state.groups.filter(group => group.core === input.core && group.voice === input.voice).flatMap(group => group.items);
+      await awaitEngine(engine.resetChat());
+      if (stopFlag) break;
+      const stream = await awaitEngine(engine.chat.completions.create({
+        messages: [{ role: "user", content: buildPrompt(angle, input, existing) }],
+        temperature: input.temp, top_p: 0.95, max_tokens: Math.min(60 + input.count * 40, 900), stream: true
+      }));
+      const iterator = stream[Symbol.asyncIterator]();
+      let output = "", finish = null;
+      while (true) {
+        const step = await awaitEngine(iterator.next()); if (step.done) break;
+        const choice = step.value.choices?.[0];
+        output += choice?.delta?.content || ""; finish = choice?.finish_reason || finish;
+        g.live = output;
+        if (g.liveElement?.isConnected) g.liveElement.textContent = stripThoughts(output).trim() || "考え中…";
+        // Drain the interrupted stream to release WebLLM's request lock before the next run.
+      }
+      added += keepPhrases(g, output, input.count, stopFlag || (finish && finish !== "stop"));
+      delete g.live; delete g.liveElement; current = null; renderGroups();
+    }
+  } catch (e) {
+    forced = e?.code === "TANE_FORCE_STOP";
+    if (forced && current) added += keepPhrases(current, current.live || "", input.count, true);
+    failed = !forced;
+    $("#mnote").textContent = forced ? "強制停止しました。続けるにはモデルを読み込み直してください。" : explainError(e);
+    if (failed) toast(explainError(e));
+    // GPU/worker failures can leave the native request lock held. Recreate the model explicitly.
+    releaseWorker();
+  } finally {
+    clearTimeout(stopTimer); stopTimer = null; forceStopReady = false;
+    if (current) { delete current.live; delete current.liveElement; }
+    busy = false; syncControls(); renderGroups();
+    status(engine ? "準備OK" : "再読込が必要です", engine ? "ok" : "");
+    if (!failed) toast(forced ? "強制停止しました。モデルを読み込み直してください" : stopFlag ? "停止しました。完成した行だけ残しました" : added ? `${added}個のタネが出ました` : "新しい候補が出ませんでした。振れ幅や題材を変えて試してください");
+  }
+}
+$("#sow").onclick = () => run([...state.angles]);
+$("#stop").onclick = () => {
+  if (!busy) return;
+  if (stopFlag && forceStopReady) {
+    const error = new Error("強制停止"); error.code = "TANE_FORCE_STOP";
+    rejectWorker?.(error); worker?.terminate(); return;
+  }
+  if (stopFlag) return;
+  stopFlag = true; syncControls();
+  try { engine?.interruptGenerate(); } catch { /* The running request handles worker errors. */ }
+  toast("停止しています。読み取り処理の終了を待っています…");
+  stopTimer = setTimeout(() => {
+    if (busy && stopFlag) { forceStopReady = true; syncControls(); toast("止まらない場合は「強制停止」でモデルを解放できます"); }
+  }, 5000);
+};
+if (!$("#core").value) state.groups = SAMPLE.groups.map(g => ({ ...g, items: [...g.items], sample: true, core: SAMPLE.core, voice: "" }));
+renderChips(); renderSegs(); renderGroups(); renderBasket(); syncControls(); checkGPU();
+
+</script>
+</body>
+</html>
